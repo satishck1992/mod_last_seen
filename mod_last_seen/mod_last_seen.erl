@@ -6,6 +6,7 @@
 -behaviour(gen_mod).
 
 -define(EJABBERD_DEBUG, true).
+-define(NS_RECEIPTS, <<"urn:xmpp:receipts">>).
 
 -include("logger.hrl").
 -include("ejabberd.hrl").
@@ -32,13 +33,14 @@ stop(Host) ->
 on_user_send_info(Packet, _C2SState, From, To) ->
 	case packet_type(Packet) of 
 		S when (S==set) ->
-			store_info(Packet, From);
+			store_info(Packet, From),
+			ok;
 		S when (S==get) ->
-			send_last_seen_info(Packet ,From);
+			send_last_seen_info(Packet ,From),
+			ok;
 		_ ->
-			ok
-	end,
-	Packet.
+			Packet
+	end.
 
 packet_type(Packet) -> 
 	case {xml:get_tag_attr_s(<<"method">>, Packet),
@@ -53,7 +55,7 @@ packet_type(Packet) ->
 
 
 send_last_seen_info(Packet, From) ->
-	{Value, User} =  xml:get_tag_attr(<<"queried">>, Packet),
+	User =  xml:get_tag_attr_s(<<"queried">>, Packet),
 	LServer = From#jid.lserver,
     case ejabberd_odbc:sql_query(
            LServer,
@@ -61,21 +63,21 @@ send_last_seen_info(Packet, From) ->
            		<<" where username  = ">>,
            		<<"'">>, User, <<"';">>]) of
 
-        {selected, _, [Timestamp]} -> 
-        	xml:get_tag_attr_s("<<asdfdas>>", Timestamp),
-        	send_ack_response(From, Timestamp, Packet)
+        {selected, _, [[Timestamp]]} -> 
+        	send_response(From, Timestamp, Packet)
     end.	
 
-send_ack_response(From, Timestamp, Packet) ->
+send_response(To, Timestamp, Packet) ->
     RegisterFromJid = <<"dev@mm.io">>, %used in ack stanza
-    ReceiptId = xml:get_tag_attr_s(<<"id">>, Packet),
-    XmlBody = #xmlel{name = <<"iq">>,
-              		    attrs = [{<<"from">>, RegisterFromJid}, {<<"to">>, jlib:jid_to_string(From)}],
+	From = jlib:string_to_jid(RegisterFromJid),
+    SentTo = jlib:jid_to_string(To),
+    XmlBody = #xmlel{name = <<"message">>,
+              		    attrs = [{<<"from">>, To}, {<<"to">>, To}],
               		    children =
-              			[#xmlel{name = <<"last_seen">>,
-              				attrs = [{<<"timestamp">>, Timestamp}, {<<"id">>, ReceiptId} ],
+              			[#xmlel{name = <<"recieved">>,
+              				attrs = [{<<"timestamp">>, Timestamp}],
               				children = []}]},
-    ejabberd_router:route(jlib:string_to_jid(RegisterFromJid), From, XmlBody).
+    ejabberd_router:route(From, To, XmlBody).
 
 store_info(Packet, From) ->
     Username = From#jid.luser,
