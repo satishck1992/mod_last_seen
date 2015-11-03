@@ -43,11 +43,10 @@ on_user_send_info(Packet, _C2SState, From, To) ->
 	end.
 
 packet_type(Packet) -> 
-	case {xml:get_tag_attr_s(<<"method">>, Packet),
-		xml:get_tag_attr_s(<<"type">>, Packet)} of
-	{<<"last_seen">>, <<"get">>} ->
+	case {xml:get_tag_attr_s(<<"to">>, Packet)} of
+	{<<"gettimedev@mm.io">>} ->
 		get;
-	{<<"last_seen">>, <<"set">>} ->
+	{<<"settimedev@mm.io">>} ->
 		set;
 	_ ->
 		false
@@ -55,7 +54,7 @@ packet_type(Packet) ->
 
 
 send_last_seen_info(Packet, From) ->
-	User =  xml:get_tag_attr_s(<<"queried">>, Packet),
+    User = xml:get_subtag_cdata(Packet, <<"body">>),
 	LServer = From#jid.lserver,
     case ejabberd_odbc:sql_query(
            LServer,
@@ -74,15 +73,15 @@ send_response(To, Timestamp, Packet) ->
     XmlBody = #xmlel{name = <<"message">>,
               		    attrs = [{<<"from">>, To}, {<<"to">>, To}],
               		    children =
-              			[#xmlel{name = <<"recieved">>,
-              				attrs = [{<<"timestamp">>, Timestamp}],
-              				children = []}]},
+              			[#xmlel{name = <<"body">>,
+              				attrs = [],
+              				children = [{xmlcdata, Timestamp}]}]},
     ejabberd_router:route(From, To, XmlBody).
 
 store_info(Packet, From) ->
     Username = From#jid.luser,
     LServer = From#jid.lserver,
-    Timestamp = xml:get_tag_attr_s(<<"timestamp">>, Packet),
+    Timestamp = xml:get_subtag_cdata(Packet, <<"body">>),
     ejabberd_odbc:sql_query(LServer,[<<"update users set last_seen = ">>,
     								<<"'">>, Timestamp, <<"'">>,
     								<<" where username='">>,
